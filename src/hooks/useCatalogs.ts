@@ -1,77 +1,93 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Catalog } from '@/types/catalog';
+import { useStorageProvider } from '@/lib/storage/useStorageProvider';
+
+function migrarCatalogo(catalog: any): Catalog {
+  const migrated = { ...catalog };
+
+  if (!catalog.planType) {
+    migrated.planType = 'standard';
+    migrated.premiumFeatures = {};
+  }
+
+  if (!catalog.businessHours) {
+    migrated.businessHours = {
+      monday: { open: '09:00', close: '18:00', closed: false },
+      tuesday: { open: '09:00', close: '18:00', closed: false },
+      wednesday: { open: '09:00', close: '18:00', closed: false },
+      thursday: { open: '09:00', close: '18:00', closed: false },
+      friday: { open: '09:00', close: '18:00', closed: false },
+      saturday: { open: '09:00', close: '18:00', closed: false },
+      sunday: { open: '09:00', close: '18:00', closed: true },
+    };
+  }
+
+  if (!catalog.whatsappNumber) {
+    migrated.whatsappNumber = catalog.premiumFeatures?.whatsapp?.number || '';
+  }
+
+  if (!catalog.generalDiscount) {
+    migrated.generalDiscount = undefined;
+  }
+
+  return migrated;
+}
 
 export const useCatalogs = () => {
+  const { provider, isCloudConnected } = useStorageProvider();
   const [catalogs, setCatalogs] = useState<Catalog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const cargarCatalogos = useCallback(async () => {
+    setLoading(true);
+    try {
+      const raw = await provider.listCatalogs();
+      const migrados = raw.map(migrarCatalogo);
+      setCatalogs(migrados);
+    } catch (error) {
+      console.error('❌ Error al cargar catálogos:', error);
+      setCatalogs([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [provider]);
 
   useEffect(() => {
-    const savedCatalogs = localStorage.getItem('catalogs');
-    if (savedCatalogs) {
-      const parsedCatalogs = JSON.parse(savedCatalogs);
-      
-      // Migrar catálogos antiguos al nuevo formato
-      const migratedCatalogs = parsedCatalogs.map((catalog: any) => {
-        const migrated = { ...catalog };
-        
-        if (!catalog.planType) {
-          migrated.planType = 'standard';
-          migrated.premiumFeatures = {};
-        }
-        
-        if (!catalog.businessHours) {
-          migrated.businessHours = {
-            monday: { open: "09:00", close: "18:00", closed: false },
-            tuesday: { open: "09:00", close: "18:00", closed: false },
-            wednesday: { open: "09:00", close: "18:00", closed: false },
-            thursday: { open: "09:00", close: "18:00", closed: false },
-            friday: { open: "09:00", close: "18:00", closed: false },
-            saturday: { open: "09:00", close: "18:00", closed: false },
-            sunday: { open: "09:00", close: "18:00", closed: true },
-          };
-        }
-        
-        if (!catalog.whatsappNumber) {
-          // Migrar desde las funciones premium si existe
-          migrated.whatsappNumber = catalog.premiumFeatures?.whatsapp?.number || "";
-        }
-        
-        if (!catalog.generalDiscount) {
-          migrated.generalDiscount = undefined;
-        }
-        
-        return migrated;
-      });
-      
-      setCatalogs(migratedCatalogs);
-      
-      // Guardar la versión migrada
-      localStorage.setItem('catalogs', JSON.stringify(migratedCatalogs));
-    }
-  }, []);
+    cargarCatalogos();
+  }, [cargarCatalogos]);
 
-  const saveCatalog = (catalog: Catalog) => {
+  const saveCatalog = async (catalog: Catalog) => {
     try {
-      const updatedCatalogs = [...catalogs, catalog];
-      setCatalogs(updatedCatalogs);
-      localStorage.setItem('catalogs', JSON.stringify(updatedCatalogs));
-      console.log('✅ Catálogo guardado en localStorage:', catalog.name);
+      const creado = await provider.createCatalog(catalog);
+      setCatalogs((prev) => [...prev, creado]);
+      return creado;
     } catch (error) {
       console.error('❌ Error al guardar catálogo:', error);
       throw new Error('No se pudo guardar el catálogo');
     }
   };
 
-  const deleteCatalog = (id: string) => {
-    const updatedCatalogs = catalogs.filter(catalog => catalog.id !== id);
-    setCatalogs(updatedCatalogs);
-    localStorage.setItem('catalogs', JSON.stringify(updatedCatalogs));
+  const updateCatalog = async (catalog: Catalog) => {
+    await provider.updateCatalog(catalog.id, catalog);
+    setCatalogs((prev) => prev.map((c) => (c.id === catalog.id ? catalog : c)));
+  };
+
+  const deleteCatalog = async (id: string) => {
+    await provider.deleteCatalog(id);
+    setCatalogs((prev) => prev.filter((c) => c.id !== id));
   };
 
   return {
     catalogs,
+    loading,
+    isCloudConnected,
+    storageProviderName: provider.name,
     saveCatalog,
-    deleteCatalog
+    updateCatalog,
+    deleteCatalog,
+    getPublicUrl: (id: string) => provider.getPublicUrl(id),
+    recargar: cargarCatalogos,
   };
 };

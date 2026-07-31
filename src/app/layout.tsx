@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, Roboto, Poppins, Playfair_Display, Montserrat, Open_Sans, Lato, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
+import AuthSessionProvider from "@/components/AuthSessionProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -70,7 +71,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${roboto.variable} ${poppins.variable} ${playfair.variable} ${montserrat.variable} ${openSans.variable} ${lato.variable} ${sourceSans.variable} antialiased`}
       >
-        {children}
+        <AuthSessionProvider>{children}</AuthSessionProvider>
       </body>
     </html>
   );

@@ -23,14 +23,33 @@ export default function CatalogView() {
   const [showHoursPopup, setShowHoursPopup] = useState(false);
 
   useEffect(() => {
-    const savedCatalogs = localStorage.getItem("catalogs");
-    if (savedCatalogs) {
-      const catalogs: Catalog[] = JSON.parse(savedCatalogs);
-      const foundCatalog = catalogs.find((c) => c.id === params.id);
-      setCatalog(foundCatalog || null);
-    }
+    const cargarCatalogo = async () => {
+      // 1. Intentar Drive primero (modo producción real: el catálogo vive
+      //    en la nube del dueño del negocio, visible para cualquiera con el link).
+      try {
+        const res = await fetch(`/api/public-catalog/${params.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          setCatalog(data.catalog);
+          setCurrentUrl(window.location.href);
+          return;
+        }
+      } catch {
+        // Si falla (ej. no es un fileId de Drive), seguimos al modo local.
+      }
 
-    setCurrentUrl(window.location.href);
+      // 2. Modo local/demo: el catálogo se creó sin iniciar sesión con Google.
+      const savedCatalogs = localStorage.getItem("catalogs");
+      if (savedCatalogs) {
+        const catalogs: Catalog[] = JSON.parse(savedCatalogs);
+        const foundCatalog = catalogs.find((c) => c.id === params.id);
+        setCatalog(foundCatalog || null);
+      }
+
+      setCurrentUrl(window.location.href);
+    };
+
+    cargarCatalogo();
   }, [params.id]);
 
   if (!catalog) {
