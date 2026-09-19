@@ -110,3 +110,52 @@ export async function uploadImageFile(accessToken: string, fileName: string, mim
   await makePublic(drive, fileId);
   return `https://drive.google.com/uc?export=view&id=${fileId}`;
 }
+
+// ==================== Archivo único de configuración del sitio (Enlaces) ====================
+// A diferencia de los catálogos (varios por cuenta), aquí solo existe UN
+// archivo "site-config.json" por cuenta de Drive - se busca por nombre fijo.
+
+const SITE_CONFIG_FILENAME = 'site-config.json';
+
+/** Busca el archivo de configuración del sitio del usuario. Devuelve null si no existe aún. */
+export async function findSiteConfigFile(accessToken: string): Promise<string | null> {
+  const drive = getDriveClient(accessToken);
+  const folderId = await getOrCreateAppFolder(drive);
+
+  const res = await drive.files.list({
+    q: `'${folderId}' in parents and name='${SITE_CONFIG_FILENAME}' and trashed=false`,
+    fields: 'files(id)',
+  });
+
+  return res.data.files && res.data.files.length > 0 ? res.data.files[0].id! : null;
+}
+
+/** Crea el archivo de configuración del sitio (solo la primera vez) y lo hace público. */
+export async function createSiteConfigFile(accessToken: string, data: object): Promise<string> {
+  const drive = getDriveClient(accessToken);
+  const folderId = await getOrCreateAppFolder(drive);
+
+  const file = await drive.files.create({
+    requestBody: { name: SITE_CONFIG_FILENAME, parents: [folderId] },
+    media: { mimeType: 'application/json', body: Readable.from([JSON.stringify(data)]) },
+    fields: 'id',
+  });
+
+  const fileId = file.data.id!;
+  await makePublic(drive, fileId);
+  return fileId;
+}
+
+export async function updateSiteConfigFile(accessToken: string, fileId: string, data: object) {
+  const drive = getDriveClient(accessToken);
+  await drive.files.update({
+    fileId,
+    media: { mimeType: 'application/json', body: Readable.from([JSON.stringify(data)]) },
+  });
+}
+
+export async function getSiteConfigFile(accessToken: string, fileId: string) {
+  const drive = getDriveClient(accessToken);
+  const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'json' });
+  return res.data;
+}
